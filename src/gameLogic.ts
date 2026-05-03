@@ -1,6 +1,7 @@
-import type { Board, Player, Position, CellValue, GameState } from './types';
+import type { Board, Player, Position, CellValue, GameState, GameMode } from './types';
 
 export const BOARD_SIZE = 15;
+export const CAPTURE_WIN_COUNT = 5;
 
 export function createEmptyBoard(): Board {
   return Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null));
@@ -76,14 +77,75 @@ export function isBoardFull(board: Board): boolean {
   return true;
 }
 
-export function createInitialGameState(): GameState {
+export function createInitialGameState(gameMode: GameMode = 'standard'): GameState {
   return {
     board: createEmptyBoard(),
     currentPlayer: 'black',
     winner: null,
     isGameOver: false,
-    moveHistory: []
+    moveHistory: [],
+    gameMode,
+    blackCaptures: 0,
+    whiteCaptures: 0
   };
+}
+
+export function getOpponent(player: Player): Player {
+  return player === 'black' ? 'white' : 'black';
+}
+
+export function checkCaptures(board: Board, row: number, col: number, player: Player): Position[] {
+  const capturedPieces: Position[] = [];
+  const opponent = getOpponent(player);
+  
+  for (const [dr, dc] of DIRECTIONS) {
+    const checkDirection = (dir: number) => {
+      const positions: Position[] = [];
+      for (let i = 1; i <= 2; i++) {
+        const newRow = row + dr * dir * i;
+        const newCol = col + dc * dir * i;
+        
+        if (!isValidPosition(newRow, newCol)) {
+          return [];
+        }
+        
+        const cell = board[newRow][newCol];
+        if (cell === opponent) {
+          positions.push({ row: newRow, col: newCol });
+        } else if (cell === player) {
+          return positions.length === 2 ? positions : [];
+        } else {
+          return [];
+        }
+      }
+      return [];
+    };
+    
+    const positiveCaptures = checkDirection(1);
+    const negativeCaptures = checkDirection(-1);
+    
+    capturedPieces.push(...positiveCaptures, ...negativeCaptures);
+  }
+  
+  return capturedPieces;
+}
+
+export function applyCaptures(board: Board, captures: Position[]): Board {
+  const newBoard = board.map(row => [...row]);
+  for (const { row, col } of captures) {
+    newBoard[row][col] = null;
+  }
+  return newBoard;
+}
+
+export function checkCaptureWin(blackCaptures: number, whiteCaptures: number): Player | null {
+  if (blackCaptures >= CAPTURE_WIN_COUNT) {
+    return 'black';
+  }
+  if (whiteCaptures >= CAPTURE_WIN_COUNT) {
+    return 'white';
+  }
+  return null;
 }
 
 export function getAvailableMoves(board: Board): Position[] {
