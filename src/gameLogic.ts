@@ -1,4 +1,4 @@
-import type { Board, Player, Position, CellValue, GameState, GameMode } from './types';
+import type { Board, Player, Position, GameState, GameMode } from './types';
 
 export const BOARD_SIZE = 15;
 export const CAPTURE_WIN_COUNT = 5;

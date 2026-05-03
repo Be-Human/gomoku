@@ -1,5 +1,5 @@
-import type { Board, Player, Position } from './types';
-import { isValidPosition, BOARD_SIZE, makeMove, checkWinner } from './gameLogic';
+import type { Board, Player, Position, DifficultyLevel } from './types';
+import { isValidPosition, BOARD_SIZE, makeMove, checkWinner, getOpponent } from './gameLogic';
 
 const DIRECTIONS = [
   [0, 1],   // 水平
@@ -182,8 +182,46 @@ function evaluateBoard(board: Board, player: Player): number {
   return totalScore;
 }
 
-// 简单的贪心AI：选择分数最高的位置
-export function getBestMove(board: Board, player: Player): Position | null {
+// 简单难度AI：有随机因素，容易犯错
+function getEasyMove(board: Board, player: Player): Position | null {
+  const candidates = getCandidateMoves(board);
+  
+  if (candidates.length === 0) {
+    return null;
+  }
+  
+  const scoredMoves = candidates.map(move => {
+    const newBoard = makeMove(board, move.row, move.col, player);
+    
+    // 检查是否直接获胜（简单AI也会抓住直接获胜的机会）
+    if (checkWinner(newBoard, move.row, move.col, player)) {
+      return { move, score: Infinity };
+    }
+    
+    // 简单AI只做基本评估，并且评分较低
+    const attackScore = evaluatePosition(newBoard, move.row, move.col, player) * 0.5;
+    
+    const opponent = getOpponent(player);
+    const opponentBoard = makeMove(board, move.row, move.col, opponent);
+    const defenseScore = evaluatePosition(opponentBoard, move.row, move.col, opponent) * 0.3;
+    
+    // 加入随机因素，让AI更容易犯错
+    const randomFactor = Math.random() * 50;
+    
+    return { move, score: attackScore + defenseScore + randomFactor };
+  });
+  
+  // 排序后选择前几个中的一个，而不是总是最佳的
+  scoredMoves.sort((a, b) => b.score - a.score);
+  
+  const topMoves = Math.min(scoredMoves.length, 5);
+  const randomIndex = Math.floor(Math.random() * topMoves);
+  
+  return scoredMoves[randomIndex].move;
+}
+
+// 普通难度AI：平衡的贪心算法
+function getNormalMove(board: Board, player: Player): Position | null {
   const candidates = getCandidateMoves(board);
   
   if (candidates.length === 0) {
@@ -194,7 +232,6 @@ export function getBestMove(board: Board, player: Player): Position | null {
   let bestMove: Position | null = null;
   
   for (const move of candidates) {
-    // 模拟落子
     const newBoard = makeMove(board, move.row, move.col, player);
     
     // 检查是否直接获胜
@@ -202,11 +239,22 @@ export function getBestMove(board: Board, player: Player): Position | null {
       return move;
     }
     
+    // 检查是否需要防守对手的必胜点
+    const opponent = getOpponent(player);
+    const opponentWinMoves = candidates.filter(candidate => {
+      const testBoard = makeMove(board, candidate.row, candidate.col, opponent);
+      return checkWinner(testBoard, candidate.row, candidate.col, opponent);
+    });
+    
+    if (opponentWinMoves.length > 0) {
+      // 优先防守
+      return opponentWinMoves[0];
+    }
+    
     // 计算进攻分数
     const attackScore = evaluatePosition(newBoard, move.row, move.col, player);
     
-    // 计算防守分数（如果对手在这里落子的分数）
-    const opponent: Player = player === 'black' ? 'white' : 'black';
+    // 计算防守分数
     const opponentBoard = makeMove(board, move.row, move.col, opponent);
     const defenseScore = evaluatePosition(opponentBoard, move.row, move.col, opponent);
     
@@ -222,5 +270,113 @@ export function getBestMove(board: Board, player: Player): Position | null {
   return bestMove;
 }
 
-// 更高级的AI：使用极小极大算法（可选）
-// 这里使用简化版本的贪心算法，已经足够强大
+// 困难难度AI：更深入的评估，更强的策略
+function getHardMove(board: Board, player: Player): Position | null {
+  const candidates = getCandidateMoves(board);
+  
+  if (candidates.length === 0) {
+    return null;
+  }
+  
+  // 优先检查必胜点
+  for (const move of candidates) {
+    const newBoard = makeMove(board, move.row, move.col, player);
+    if (checkWinner(newBoard, move.row, move.col, player)) {
+      return move;
+    }
+  }
+  
+  // 检查对手的必胜点（必须防守）
+  const opponent = getOpponent(player);
+  for (const move of candidates) {
+    const testBoard = makeMove(board, move.row, move.col, opponent);
+    if (checkWinner(testBoard, move.row, move.col, opponent)) {
+      return move;
+    }
+  }
+  
+  // 检查是否有活四（必胜局面）
+  for (const move of candidates) {
+    const newBoard = makeMove(board, move.row, move.col, player);
+    const { count, openEnds } = analyzeAllDirections(newBoard, move.row, move.col, player);
+    if (count >= 4 && openEnds >= 1) {
+      return move;
+    }
+  }
+  
+  // 检查对手的活四（必须防守）
+  for (const move of candidates) {
+    const testBoard = makeMove(board, move.row, move.col, opponent);
+    const { count, openEnds } = analyzeAllDirections(testBoard, move.row, move.col, opponent);
+    if (count >= 4 && openEnds >= 1) {
+      return move;
+    }
+  }
+  
+  let bestScore = -Infinity;
+  let bestMove: Position | null = null;
+  
+  for (const move of candidates) {
+    const newBoard = makeMove(board, move.row, move.col, player);
+    
+    // 深度评估：考虑下一步对手可能的应对
+    const nextCandidates = getCandidateMoves(newBoard);
+    let worstCaseScore = Infinity;
+    
+    // 模拟对手可能的最佳应对
+    for (const nextMove of nextCandidates.slice(0, 10)) {
+      const opponentBoard = makeMove(newBoard, nextMove.row, nextMove.col, opponent);
+      const score = evaluateBoard(opponentBoard, player);
+      worstCaseScore = Math.min(worstCaseScore, score);
+    }
+    
+    // 如果没有对手的应对，使用当前评估
+    if (worstCaseScore === Infinity) {
+      worstCaseScore = evaluateBoard(newBoard, player);
+    }
+    
+    // 位置评估
+    const attackScore = evaluatePosition(newBoard, move.row, move.col, player);
+    const opponentBoard = makeMove(board, move.row, move.col, opponent);
+    const defenseScore = evaluatePosition(opponentBoard, move.row, move.col, opponent);
+    
+    // 总评分：考虑多步 + 当前攻防（防守更重要）
+    const totalScore = worstCaseScore + attackScore * 0.5 + defenseScore * 1.5;
+    
+    if (totalScore > bestScore) {
+      bestScore = totalScore;
+      bestMove = move;
+    }
+  }
+  
+  return bestMove;
+}
+
+// 辅助函数：分析所有方向的最大连子数和开放端
+function analyzeAllDirections(board: Board, row: number, col: number, player: Player): { count: number; openEnds: number } {
+  let maxCount = 0;
+  let totalOpenEnds = 0;
+  
+  for (const [dr, dc] of DIRECTIONS) {
+    const { count, openEnds } = analyzeDirection(board, row, col, dr, dc, player);
+    if (count > maxCount) {
+      maxCount = count;
+    }
+    totalOpenEnds += openEnds;
+  }
+  
+  return { count: maxCount, openEnds: totalOpenEnds };
+}
+
+// 根据难度选择对应的AI函数
+export function getBestMove(board: Board, player: Player, difficulty: DifficultyLevel = 'normal'): Position | null {
+  switch (difficulty) {
+    case 'easy':
+      return getEasyMove(board, player);
+    case 'hard':
+      return getHardMove(board, player);
+    case 'normal':
+    default:
+      return getNormalMove(board, player);
+  }
+}

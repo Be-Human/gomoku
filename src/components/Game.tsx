@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { GameState, Player, Position, Move, GameMode } from '../types';
+import type { GameState, Player, Position, GameMode, OpponentType, DifficultyLevel } from '../types';
 import { 
   createInitialGameState, 
   makeMove, 
@@ -20,24 +20,46 @@ const Game: React.FC = () => {
   const [isThinking, setIsThinking] = useState(false);
   const [lastMove, setLastMove] = useState<Position | null>(null);
   const [gameMode, setGameMode] = useState<GameMode>('standard');
+  const [opponentType, setOpponentType] = useState<OpponentType>('ai');
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>('normal');
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isThinkingRef = useRef(false);
 
-  const resetGame = useCallback((mode: GameMode = gameMode) => {
+  const resetGame = useCallback((
+    mode: GameMode = gameMode, 
+    opponent: OpponentType = opponentType,
+    level: DifficultyLevel = difficulty
+  ) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    isThinkingRef.current = false;
     setGameState(createInitialGameState(mode));
     setLastMove(null);
     setIsThinking(false);
     setGameMode(mode);
-  }, [gameMode]);
+    setOpponentType(opponent);
+    setDifficulty(level);
+  }, [gameMode, opponentType, difficulty]);
 
   const handleModeChange = useCallback((mode: GameMode) => {
     if (mode !== gameMode) {
       resetGame(mode);
     }
   }, [gameMode, resetGame]);
+
+  const handleOpponentTypeChange = useCallback((opponent: OpponentType) => {
+    if (opponent !== opponentType) {
+      resetGame(gameMode, opponent);
+    }
+  }, [gameMode, opponentType, resetGame]);
+
+  const handleDifficultyChange = useCallback((level: DifficultyLevel) => {
+    if (level !== difficulty) {
+      resetGame(gameMode, opponentType, level);
+    }
+  }, [gameMode, opponentType, difficulty, resetGame]);
 
   const undoMove = useCallback(() => {
     if (timeoutRef.current) {
@@ -122,8 +144,45 @@ const Game: React.FC = () => {
     setIsThinking(false);
   }, [gameState]);
 
+  const makePlayerMove = useCallback((row: number, col: number, player: Player) => {
+    const newBoard = makeMove(gameState.board, row, col, player);
+    let capturedPieces: Position[] = [];
+    let newBlackCaptures = gameState.blackCaptures;
+    let newWhiteCaptures = gameState.whiteCaptures;
+
+    if (gameState.gameMode === 'capture') {
+      capturedPieces = checkCaptures(newBoard, row, col, player);
+      if (capturedPieces.length > 0) {
+        const updatedBoard = applyCaptures(newBoard, capturedPieces);
+        if (player === 'black') {
+          newBlackCaptures += capturedPieces.length;
+        } else {
+          newWhiteCaptures += capturedPieces.length;
+        }
+        return { 
+          board: updatedBoard, 
+          capturedPieces, 
+          newBlackCaptures, 
+          newWhiteCaptures 
+        };
+      }
+    }
+
+    return { 
+      board: newBoard, 
+      capturedPieces, 
+      newBlackCaptures, 
+      newWhiteCaptures 
+    };
+  }, [gameState]);
+
   const handleCellClick = useCallback((row: number, col: number) => {
-    if (gameState.isGameOver || isThinking || gameState.currentPlayer !== 'black') {
+    if (gameState.isGameOver || isThinking) {
+      return;
+    }
+
+    // 人机对战时，只有黑棋可以点击
+    if (opponentType === 'ai' && gameState.currentPlayer !== 'black') {
       return;
     }
 
@@ -131,84 +190,92 @@ const Game: React.FC = () => {
       return;
     }
 
-    let newBoard = makeMove(gameState.board, row, col, 'black');
-    let capturedPieces: Position[] = [];
-    let newBlackCaptures = gameState.blackCaptures;
-
-    if (gameState.gameMode === 'capture') {
-      capturedPieces = checkCaptures(newBoard, row, col, 'black');
-      if (capturedPieces.length > 0) {
-        newBoard = applyCaptures(newBoard, capturedPieces);
-        newBlackCaptures += capturedPieces.length;
-      }
-    }
+    const currentPlayer = gameState.currentPlayer;
+    const { board: newBoard, capturedPieces, newBlackCaptures, newWhiteCaptures } = 
+      makePlayerMove(row, col, currentPlayer);
 
     const newMoveHistory = [...gameState.moveHistory, { 
       position: { row, col }, 
-      player: 'black' as Player,
+      player: currentPlayer,
       capturedPieces: capturedPieces.length > 0 ? capturedPieces : undefined
     }];
 
+    // 检查标准模式获胜
     if (gameState.gameMode === 'standard') {
-      if (checkWinner(newBoard, row, col, 'black')) {
+      if (checkWinner(newBoard, row, col, currentPlayer)) {
         setGameState({
           ...gameState,
           board: newBoard,
-          winner: 'black',
+          winner: currentPlayer,
           isGameOver: true,
           moveHistory: newMoveHistory,
-          blackCaptures: newBlackCaptures
+          blackCaptures: newBlackCaptures,
+          whiteCaptures: newWhiteCaptures
         });
         setLastMove({ row, col });
         return;
       }
     } else {
-      const captureWinner = checkCaptureWin(newBlackCaptures, gameState.whiteCaptures);
-      if (captureWinner === 'black') {
+      // 检查提子模式获胜
+      const captureWinner = checkCaptureWin(newBlackCaptures, newWhiteCaptures);
+      if (captureWinner === currentPlayer) {
         setGameState({
           ...gameState,
           board: newBoard,
-          winner: 'black',
+          winner: currentPlayer,
           isGameOver: true,
           moveHistory: newMoveHistory,
-          blackCaptures: newBlackCaptures
+          blackCaptures: newBlackCaptures,
+          whiteCaptures: newWhiteCaptures
         });
         setLastMove({ row, col });
         return;
       }
     }
 
+    // 检查平局
     if (isBoardFull(newBoard)) {
       setGameState({
         ...gameState,
         board: newBoard,
         isGameOver: true,
         moveHistory: newMoveHistory,
-        blackCaptures: newBlackCaptures
+        blackCaptures: newBlackCaptures,
+        whiteCaptures: newWhiteCaptures
       });
       setLastMove({ row, col });
       return;
     }
 
+    // 切换玩家
+    const nextPlayer: Player = currentPlayer === 'black' ? 'white' : 'black';
     setGameState({
       ...gameState,
       board: newBoard,
-      currentPlayer: 'white',
+      currentPlayer: nextPlayer,
       moveHistory: newMoveHistory,
-      blackCaptures: newBlackCaptures
+      blackCaptures: newBlackCaptures,
+      whiteCaptures: newWhiteCaptures
     });
     setLastMove({ row, col });
-  }, [gameState, isThinking]);
+  }, [gameState, isThinking, opponentType, makePlayerMove]);
 
   useEffect(() => {
-    if (gameState.currentPlayer === 'white' && !gameState.isGameOver && !isThinking) {
-      setIsThinking(true);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    
+    if (opponentType === 'ai' && gameState.currentPlayer === 'white' && !gameState.isGameOver && !isThinkingRef.current) {
+      isThinkingRef.current = true;
       
       timeoutRef.current = setTimeout(() => {
+        setIsThinking(true);
         setGameState(prevState => {
-          const aiMove = getBestMove(prevState.board, 'white');
+          const aiMove = getBestMove(prevState.board, 'white', difficulty);
           
           if (!aiMove) {
+            isThinkingRef.current = false;
             setIsThinking(false);
             return prevState;
           }
@@ -232,6 +299,7 @@ const Game: React.FC = () => {
           }];
           
           setLastMove(aiMove);
+          isThinkingRef.current = false;
           setIsThinking(false);
           
           if (prevState.gameMode === 'standard') {
@@ -296,7 +364,7 @@ const Game: React.FC = () => {
         timeoutRef.current = null;
       }
     };
-  }, [gameState.currentPlayer, gameState.isGameOver]);
+  }, [gameState.currentPlayer, gameState.isGameOver, opponentType, difficulty]);
 
   const getStatusMessage = () => {
     if (gameState.winner) {
@@ -304,11 +372,21 @@ const Game: React.FC = () => {
         const blackCaptures = gameState.blackCaptures;
         const whiteCaptures = gameState.whiteCaptures;
         
+        if (opponentType === 'human') {
+          return gameState.winner === 'black' 
+            ? `黑棋获胜！提子数: ${blackCaptures}/${CAPTURE_WIN_COUNT}` 
+            : `白棋获胜！提子数: ${whiteCaptures}/${CAPTURE_WIN_COUNT}`;
+        }
+        
         if (gameState.winner === 'black') {
           return `恭喜你获胜！提子数: ${blackCaptures}/${CAPTURE_WIN_COUNT}`;
         } else {
           return `AI获胜了！提子数: ${whiteCaptures}/${CAPTURE_WIN_COUNT}`;
         }
+      }
+      
+      if (opponentType === 'human') {
+        return gameState.winner === 'black' ? '黑棋获胜！' : '白棋获胜！';
       }
       return gameState.winner === 'black' ? '恭喜你获胜！' : 'AI获胜了！';
     }
@@ -317,6 +395,10 @@ const Game: React.FC = () => {
     }
     if (isThinking) {
       return 'AI正在思考...';
+    }
+    
+    if (opponentType === 'human') {
+      return gameState.currentPlayer === 'black' ? '黑棋回合' : '白棋回合';
     }
     return '你的回合（黑棋）';
   };
@@ -340,6 +422,54 @@ const Game: React.FC = () => {
         </button>
       </div>
       
+      {gameMode === 'standard' && (
+        <>
+          <div className="settings-section">
+            <div className="settings-label">对手选择:</div>
+            <div className="settings-buttons">
+              <button 
+                className={`settings-button ${opponentType === 'ai' ? 'active' : ''}`}
+                onClick={() => handleOpponentTypeChange('ai')}
+              >
+                人机对战
+              </button>
+              <button 
+                className={`settings-button ${opponentType === 'human' ? 'active' : ''}`}
+                onClick={() => handleOpponentTypeChange('human')}
+              >
+                双人对战
+              </button>
+            </div>
+          </div>
+          
+          {opponentType === 'ai' && (
+            <div className="settings-section">
+              <div className="settings-label">AI难度:</div>
+              <div className="settings-buttons">
+                <button 
+                  className={`settings-button ${difficulty === 'easy' ? 'active' : ''}`}
+                  onClick={() => handleDifficultyChange('easy')}
+                >
+                  简单
+                </button>
+                <button 
+                  className={`settings-button ${difficulty === 'normal' ? 'active' : ''}`}
+                  onClick={() => handleDifficultyChange('normal')}
+                >
+                  普通
+                </button>
+                <button 
+                  className={`settings-button ${difficulty === 'hard' ? 'active' : ''}`}
+                  onClick={() => handleDifficultyChange('hard')}
+                >
+                  困难
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      
       <div className={`status-message ${gameState.winner ? (gameState.winner === 'black' ? 'winner' : 'loser') : ''}`}>
         {getStatusMessage()}
       </div>
@@ -347,11 +477,15 @@ const Game: React.FC = () => {
       {gameState.gameMode === 'capture' && (
         <div className="capture-stats">
           <div className="capture-stat">
-            <span className="capture-label">黑棋（你）</span>
+            <span className="capture-label">
+              黑棋{opponentType === 'ai' ? '（你）' : ''}
+            </span>
             <span className="capture-count">{gameState.blackCaptures}/{CAPTURE_WIN_COUNT}</span>
           </div>
           <div className="capture-stat">
-            <span className="capture-label">白棋（AI）</span>
+            <span className="capture-label">
+              白棋{opponentType === 'ai' ? '（AI）' : ''}
+            </span>
             <span className="capture-count">{gameState.whiteCaptures}/{CAPTURE_WIN_COUNT}</span>
           </div>
         </div>
@@ -362,7 +496,11 @@ const Game: React.FC = () => {
           board={gameState.board}
           onCellClick={handleCellClick}
           lastMove={lastMove}
-          disabled={gameState.isGameOver || isThinking || gameState.currentPlayer !== 'black'}
+          disabled={
+            gameState.isGameOver || 
+            isThinking || 
+            (opponentType === 'ai' && gameState.currentPlayer !== 'black')
+          }
         />
       </div>
       
