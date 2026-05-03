@@ -101,6 +101,7 @@ export function checkCaptures(board: Board, row: number, col: number, player: Pl
   for (const [dr, dc] of DIRECTIONS) {
     const checkDirection = (dir: number) => {
       const positions: Position[] = [];
+      
       for (let i = 1; i <= 2; i++) {
         const newRow = row + dr * dir * i;
         const newCol = col + dc * dir * i;
@@ -113,11 +114,25 @@ export function checkCaptures(board: Board, row: number, col: number, player: Pl
         if (cell === opponent) {
           positions.push({ row: newRow, col: newCol });
         } else if (cell === player) {
-          return positions.length === 2 ? positions : [];
+          if (positions.length === 1) {
+            return positions;
+          } else {
+            return [];
+          }
         } else {
           return [];
         }
       }
+      
+      if (positions.length === 2) {
+        const nextRow = row + dr * dir * 3;
+        const nextCol = col + dc * dir * 3;
+        
+        if (isValidPosition(nextRow, nextCol) && board[nextRow][nextCol] === player) {
+          return positions;
+        }
+      }
+      
       return [];
     };
     
