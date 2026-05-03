@@ -1,6 +1,7 @@
 export type Player = 'black' | 'white';
 export type CellValue = Player | null;
 export type Board = CellValue[][];
+export type GameMode = 'standard' | 'capture';
 
 export interface Position {
   row: number;
@@ -10,6 +11,7 @@ export interface Position {
 export interface Move {
   position: Position;
   player: Player;
+  capturedPieces?: Position[];
 }
 
 export interface GameState {
@@ -18,4 +20,7 @@ export interface GameState {
   winner: Player | null;
   isGameOver: boolean;
   moveHistory: Move[];
+  gameMode: GameMode;
+  blackCaptures: number;
+  whiteCaptures: number;
 }
