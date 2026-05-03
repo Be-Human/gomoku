@@ -66,26 +66,110 @@ const Game: React.FC = () => {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    isThinkingRef.current = false;
 
     const { moveHistory } = gameState;
     if (moveHistory.length === 0) {
       return;
     }
 
-    if (moveHistory.length === 1) {
-      const [lastPlayerMove] = moveHistory;
+    if (opponentType === 'human') {
+      const lastMove = moveHistory[moveHistory.length - 1];
+      const newMoveHistory = moveHistory.slice(0, -1);
+
+      const newBoard = gameState.board.map(row => [...row]);
+      newBoard[lastMove.position.row][lastMove.position.col] = null;
+
+      let newBlackCaptures = gameState.blackCaptures;
+      let newWhiteCaptures = gameState.whiteCaptures;
+
+      if (lastMove.capturedPieces) {
+        for (const pos of lastMove.capturedPieces) {
+          newBoard[pos.row][pos.col] = lastMove.player === 'black' ? 'white' : 'black';
+        }
+        if (lastMove.player === 'black') {
+          newBlackCaptures -= lastMove.capturedPieces.length;
+        } else {
+          newWhiteCaptures -= lastMove.capturedPieces.length;
+        }
+      }
+
+      const newLastMove = newMoveHistory.length > 0 
+        ? newMoveHistory[newMoveHistory.length - 1].position 
+        : null;
+
+      const nextPlayer: Player = lastMove.player;
+
+      setGameState({
+        ...gameState,
+        board: newBoard,
+        currentPlayer: nextPlayer,
+        winner: null,
+        isGameOver: false,
+        moveHistory: newMoveHistory,
+        blackCaptures: newBlackCaptures,
+        whiteCaptures: newWhiteCaptures
+      });
+      setLastMove(newLastMove);
+      setIsThinking(false);
+    } else {
+      if (moveHistory.length === 1) {
+        const [lastPlayerMove] = moveHistory;
+        const newBoard = gameState.board.map(row => [...row]);
+        newBoard[lastPlayerMove.position.row][lastPlayerMove.position.col] = null;
+        
+        if (lastPlayerMove.capturedPieces) {
+          for (const pos of lastPlayerMove.capturedPieces) {
+            newBoard[pos.row][pos.col] = 'white';
+          }
+        }
+
+        const newBlackCaptures = lastPlayerMove.capturedPieces 
+          ? gameState.blackCaptures - lastPlayerMove.capturedPieces.length 
+          : gameState.blackCaptures;
+
+        setGameState({
+          ...gameState,
+          board: newBoard,
+          currentPlayer: 'black',
+          winner: null,
+          isGameOver: false,
+          moveHistory: [],
+          blackCaptures: newBlackCaptures
+        });
+        setLastMove(null);
+        setIsThinking(false);
+        return;
+      }
+
+      const lastPlayerMove = moveHistory[moveHistory.length - 2];
+      const lastAiMove = moveHistory[moveHistory.length - 1];
+      const newMoveHistory = moveHistory.slice(0, -2);
+
       const newBoard = gameState.board.map(row => [...row]);
       newBoard[lastPlayerMove.position.row][lastPlayerMove.position.col] = null;
-      
+      newBoard[lastAiMove.position.row][lastAiMove.position.col] = null;
+
+      let newBlackCaptures = gameState.blackCaptures;
+      let newWhiteCaptures = gameState.whiteCaptures;
+
       if (lastPlayerMove.capturedPieces) {
         for (const pos of lastPlayerMove.capturedPieces) {
           newBoard[pos.row][pos.col] = 'white';
         }
+        newBlackCaptures -= lastPlayerMove.capturedPieces.length;
       }
 
-      const newBlackCaptures = lastPlayerMove.capturedPieces 
-        ? gameState.blackCaptures - lastPlayerMove.capturedPieces.length 
-        : gameState.blackCaptures;
+      if (lastAiMove.capturedPieces) {
+        for (const pos of lastAiMove.capturedPieces) {
+          newBoard[pos.row][pos.col] = 'black';
+        }
+        newWhiteCaptures -= lastAiMove.capturedPieces.length;
+      }
+
+      const secondLastMove = newMoveHistory.length > 0 
+        ? newMoveHistory[newMoveHistory.length - 1].position 
+        : null;
 
       setGameState({
         ...gameState,
@@ -93,56 +177,14 @@ const Game: React.FC = () => {
         currentPlayer: 'black',
         winner: null,
         isGameOver: false,
-        moveHistory: [],
-        blackCaptures: newBlackCaptures
+        moveHistory: newMoveHistory,
+        blackCaptures: newBlackCaptures,
+        whiteCaptures: newWhiteCaptures
       });
-      setLastMove(null);
+      setLastMove(secondLastMove);
       setIsThinking(false);
-      return;
     }
-
-    const lastPlayerMove = moveHistory[moveHistory.length - 2];
-    const lastAiMove = moveHistory[moveHistory.length - 1];
-    const newMoveHistory = moveHistory.slice(0, -2);
-
-    const newBoard = gameState.board.map(row => [...row]);
-    newBoard[lastPlayerMove.position.row][lastPlayerMove.position.col] = null;
-    newBoard[lastAiMove.position.row][lastAiMove.position.col] = null;
-
-    let newBlackCaptures = gameState.blackCaptures;
-    let newWhiteCaptures = gameState.whiteCaptures;
-
-    if (lastPlayerMove.capturedPieces) {
-      for (const pos of lastPlayerMove.capturedPieces) {
-        newBoard[pos.row][pos.col] = 'white';
-      }
-      newBlackCaptures -= lastPlayerMove.capturedPieces.length;
-    }
-
-    if (lastAiMove.capturedPieces) {
-      for (const pos of lastAiMove.capturedPieces) {
-        newBoard[pos.row][pos.col] = 'black';
-      }
-      newWhiteCaptures -= lastAiMove.capturedPieces.length;
-    }
-
-    const secondLastMove = newMoveHistory.length > 0 
-      ? newMoveHistory[newMoveHistory.length - 1].position 
-      : null;
-
-    setGameState({
-      ...gameState,
-      board: newBoard,
-      currentPlayer: 'black',
-      winner: null,
-      isGameOver: false,
-      moveHistory: newMoveHistory,
-      blackCaptures: newBlackCaptures,
-      whiteCaptures: newWhiteCaptures
-    });
-    setLastMove(secondLastMove);
-    setIsThinking(false);
-  }, [gameState]);
+  }, [gameState, opponentType]);
 
   const makePlayerMove = useCallback((row: number, col: number, player: Player) => {
     const newBoard = makeMove(gameState.board, row, col, player);
