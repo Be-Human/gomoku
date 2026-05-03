@@ -2,6 +2,8 @@ export type Player = 'black' | 'white';
 export type CellValue = Player | null;
 export type Board = CellValue[][];
 export type GameMode = 'standard' | 'capture';
+export type OpponentType = 'ai' | 'human';
+export type DifficultyLevel = 'easy' | 'normal' | 'hard';
 
 export interface Position {
   row: number;
