@@ -1,0 +1,61 @@
+.board-container {
+  position: relative;
+  background-color: #DEB887;
+  border: 2px solid #8B4513;
+  border-radius: 4px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.board-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.star-point {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background-color: #000;
+  border-radius: 50%;
+}
+
+.piece {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: default;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.4);
+  transition: transform 0.1s ease;
+}
+
+.piece.black {
+  background: radial-gradient(circle at 30% 30%, #555, #000);
+}
+
+.piece.white {
+  background: radial-gradient(circle at 30% 30%, #fff, #ddd);
+  border: 1px solid #ccc;
+}
+
+.piece.last-move {
+  box-shadow: 0 0 0 3px rgba(255, 0, 0, 0.6), 2px 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.click-area {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.click-area:hover:not(.disabled) {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.click-area.disabled {
+  cursor: not-allowed;
+}
