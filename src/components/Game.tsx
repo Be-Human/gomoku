@@ -149,20 +149,20 @@ const Game: React.FC = () => {
       capturedPieces: capturedPieces.length > 0 ? capturedPieces : undefined
     }];
 
-    if (checkWinner(newBoard, row, col, 'black')) {
-      setGameState({
-        ...gameState,
-        board: newBoard,
-        winner: 'black',
-        isGameOver: true,
-        moveHistory: newMoveHistory,
-        blackCaptures: newBlackCaptures
-      });
-      setLastMove({ row, col });
-      return;
-    }
-
-    if (gameState.gameMode === 'capture') {
+    if (gameState.gameMode === 'standard') {
+      if (checkWinner(newBoard, row, col, 'black')) {
+        setGameState({
+          ...gameState,
+          board: newBoard,
+          winner: 'black',
+          isGameOver: true,
+          moveHistory: newMoveHistory,
+          blackCaptures: newBlackCaptures
+        });
+        setLastMove({ row, col });
+        return;
+      }
+    } else {
       const captureWinner = checkCaptureWin(newBlackCaptures, gameState.whiteCaptures);
       if (captureWinner === 'black') {
         setGameState({
@@ -234,17 +234,28 @@ const Game: React.FC = () => {
           setLastMove(aiMove);
           setIsThinking(false);
           
-          if (checkWinner(newBoard, aiMove.row, aiMove.col, 'white')) {
-            return {
-              ...prevState,
-              board: newBoard,
-              currentPlayer: 'black',
-              winner: 'white',
-              isGameOver: true,
-              moveHistory: newMoveHistory,
-              whiteCaptures: newWhiteCaptures
-            };
-          } else if (prevState.gameMode === 'capture') {
+          if (prevState.gameMode === 'standard') {
+            if (checkWinner(newBoard, aiMove.row, aiMove.col, 'white')) {
+              return {
+                ...prevState,
+                board: newBoard,
+                currentPlayer: 'black',
+                winner: 'white',
+                isGameOver: true,
+                moveHistory: newMoveHistory,
+                whiteCaptures: newWhiteCaptures
+              };
+            } else if (isBoardFull(newBoard)) {
+              return {
+                ...prevState,
+                board: newBoard,
+                currentPlayer: 'black',
+                isGameOver: true,
+                moveHistory: newMoveHistory,
+                whiteCaptures: newWhiteCaptures
+              };
+            }
+          } else {
             const captureWinner = checkCaptureWin(prevState.blackCaptures, newWhiteCaptures);
             if (captureWinner === 'white') {
               return {
@@ -256,16 +267,16 @@ const Game: React.FC = () => {
                 moveHistory: newMoveHistory,
                 whiteCaptures: newWhiteCaptures
               };
+            } else if (isBoardFull(newBoard)) {
+              return {
+                ...prevState,
+                board: newBoard,
+                currentPlayer: 'black',
+                isGameOver: true,
+                moveHistory: newMoveHistory,
+                whiteCaptures: newWhiteCaptures
+              };
             }
-          } else if (isBoardFull(newBoard)) {
-            return {
-              ...prevState,
-              board: newBoard,
-              currentPlayer: 'black',
-              isGameOver: true,
-              moveHistory: newMoveHistory,
-              whiteCaptures: newWhiteCaptures
-            };
           }
 
           return {
@@ -294,13 +305,9 @@ const Game: React.FC = () => {
         const whiteCaptures = gameState.whiteCaptures;
         
         if (gameState.winner === 'black') {
-          return blackCaptures >= CAPTURE_WIN_COUNT 
-            ? `恭喜你获胜！提子数: ${blackCaptures}/${CAPTURE_WIN_COUNT}` 
-            : '恭喜你获胜！';
+          return `恭喜你获胜！提子数: ${blackCaptures}/${CAPTURE_WIN_COUNT}`;
         } else {
-          return whiteCaptures >= CAPTURE_WIN_COUNT 
-            ? `AI获胜了！提子数: ${whiteCaptures}/${CAPTURE_WIN_COUNT}` 
-            : 'AI获胜了！';
+          return `AI获胜了！提子数: ${whiteCaptures}/${CAPTURE_WIN_COUNT}`;
         }
       }
       return gameState.winner === 'black' ? '恭喜你获胜！' : 'AI获胜了！';
