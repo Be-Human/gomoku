@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { GameState, Player, Position, Move } from '../types';
 import { createInitialGameState, makeMove, checkWinner, isBoardFull, BOARD_SIZE } from '../gameLogic';
 import { getBestMove } from '../ai';
@@ -9,8 +9,13 @@ const Game: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(createInitialGameState());
   const [isThinking, setIsThinking] = useState(false);
   const [lastMove, setLastMove] = useState<Position | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const resetGame = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     setGameState(createInitialGameState());
     setLastMove(null);
     setIsThinking(false);
@@ -66,55 +71,67 @@ const Game: React.FC = () => {
 
   // AI回合逻辑
   useEffect(() => {
+    // 只有当轮到AI且游戏未结束且不在思考中时才触发
     if (gameState.currentPlayer === 'white' && !gameState.isGameOver && !isThinking) {
       setIsThinking(true);
       
       // 稍微延迟一下，让AI看起来像在思考
-      const timeoutId = setTimeout(() => {
-        const aiMove = getBestMove(gameState.board, 'white');
-        
-        if (aiMove) {
-          const newBoard = makeMove(gameState.board, aiMove.row, aiMove.col, 'white');
-          const newMoveHistory = [...gameState.moveHistory, { position: aiMove, player: 'white' as Player }];
-
+      timeoutRef.current = setTimeout(() => {
+        // 使用函数式更新来确保我们使用的是最新的状态
+        setGameState(prevState => {
+          const aiMove = getBestMove(prevState.board, 'white');
+          
+          if (!aiMove) {
+            setIsThinking(false);
+            return prevState;
+          }
+          
+          const newBoard = makeMove(prevState.board, aiMove.row, aiMove.col, 'white');
+          const newMoveHistory = [...prevState.moveHistory, { position: aiMove, player: 'white' as Player }];
+          
+          setLastMove(aiMove);
+          setIsThinking(false);
+          
           // 检查AI是否获胜
           if (checkWinner(newBoard, aiMove.row, aiMove.col, 'white')) {
-            setGameState({
-              ...gameState,
+            return {
+              ...prevState,
               board: newBoard,
               currentPlayer: 'black',
               winner: 'white',
               isGameOver: true,
               moveHistory: newMoveHistory
-            });
+            };
           } else if (isBoardFull(newBoard)) {
             // 检查是否平局
-            setGameState({
-              ...gameState,
+            return {
+              ...prevState,
               board: newBoard,
               currentPlayer: 'black',
               isGameOver: true,
               moveHistory: newMoveHistory
-            });
+            };
           } else {
             // 继续游戏
-            setGameState({
-              ...gameState,
+            return {
+              ...prevState,
               board: newBoard,
               currentPlayer: 'black',
               moveHistory: newMoveHistory
-            });
+            };
           }
-          
-          setLastMove(aiMove);
-        }
-        
-        setIsThinking(false);
+        });
       }, 500);
-
-      return () => clearTimeout(timeoutId);
     }
-  }, [gameState.currentPlayer, gameState.isGameOver, gameState.board, gameState.moveHistory, isThinking]);
+    
+    // 清理函数
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [gameState.currentPlayer, gameState.isGameOver]);
 
   const getStatusMessage = () => {
     if (gameState.winner) {
